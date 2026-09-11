@@ -1,0 +1,29 @@
+{
+  "name": "console-automation",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright + TypeScript UI automation for the DIGIT HCM campaign console",
+  "scripts": {
+    "browsers": "playwright install --with-deps chromium",
+    "test": "playwright test",
+    "test:bednet": "playwright test --project=bednet",
+    "test:mrdn": "playwright test --project=mrdn",
+    "test:sanity": "playwright test --grep @sanity",
+    "test:negative": "playwright test --grep @negative",
+    "test:smoke": "playwright test --grep @smoke",
+    "test:headed": "playwright test --headed",
+    "test:ui": "playwright test --ui",
+    "report": "playwright show-report",
+    "allure:generate": "allure generate allure-results --clean -o allure-report",
+    "allure:open": "allure open allure-report",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^22.10.0",
+    "allure-playwright": "^3.0.0",
+    "dotenv": "^16.4.0",
+    "exceljs": "^4.4.0",
+    "typescript": "^5.7.0"
+  }
+}

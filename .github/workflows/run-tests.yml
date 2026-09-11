@@ -1,0 +1,176 @@
+name: Run console tests
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '30 5 * * 1-5' # 11:00 AM IST (UTC+5:30), Mon–Fri
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to run against'
+        required: true
+        type: choice
+        options:
+          - UAT
+          - DEMO
+      campaign_type:
+        description: 'Campaign type project to run'
+        required: true
+        default: both
+        type: choice
+        options:
+          - both
+          - bednet
+          - mrdn
+      tag:
+        description: 'Tag filter (@sanity, @negative, @smoke; blank = everything)'
+        required: false
+        default: '@sanity'
+      grep:
+        description: 'Extra title filter, e.g. "boundary" (blank = no filter)'
+        required: false
+        default: ''
+  repository_dispatch:
+    types: [trigger-tests]
+
+jobs:
+  test:
+    runs-on: ubuntu-22.04
+    # workflow_dispatch uses the selected environment; everything else uses UAT.
+    environment: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment || 'UAT' }}
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Build run arguments
+        id: args
+        run: |
+          project="${{ github.event.inputs.campaign_type }}"
+          case "$project" in
+            bednet) projects="--project=bednet" ;;
+            mrdn)   projects="--project=mrdn" ;;
+            *)      projects="" ;;                # both, or a non-dispatch trigger
+          esac
+
+          # Tag and title filters are separate --grep values, so they are combined
+          # into one expression that has to match both.
+          tag="${{ github.event.inputs.tag }}"
+          grep_filter="${{ github.event.inputs.grep }}"
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
+            tag="@sanity"
+            grep_filter=""
+          fi
+
+          args="$projects"
+          [ -n "$tag" ] && args="$args --grep=$tag"
+          [ -n "$grep_filter" ] && args="$args --grep=$grep_filter"
+
+          echo "value=$args" >> "$GITHUB_OUTPUT"
+          echo "Playwright arguments: $args"
+
+      - name: Run tests
+        id: run
+        continue-on-error: true
+        env:
+          CI: true
+          BASE_URL: ${{ secrets.BASE_URL }}
+          USERNAME: ${{ secrets.USERNAME }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+          BROWSER: ${{ vars.BROWSER || 'chromium' }}
+          HEADLESS: 'true'
+          HIERARCHY_NAME: ${{ vars.HIERARCHY_NAME }}
+          WORKERS: ${{ vars.WORKERS || '2' }}
+          RETRIES: ${{ vars.RETRIES || '1' }}
+        run: |
+          for key in BASE_URL USERNAME PASSWORD; do
+            if [ -z "${!key}" ]; then
+              echo "::error::$key is not set — add it to the environment's secrets."
+              exit 1
+            fi
+          done
+          npx playwright test ${{ steps.args.outputs.value }}
+
+      - name: Test summary
+        if: always()
+        run: |
+          report="test-results/junit.xml"
+          if [ ! -f "$report" ]; then
+            echo "No JUnit report at $report"
+            exit 0
+          fi
+          # The suite-level attributes on the root element are the run totals.
+          read -r total failures errors skipped <<<"$(
+            head -5 "$report" | grep -o 'tests="[0-9]*"\|failures="[0-9]*"\|errors="[0-9]*"\|skipped="[0-9]*"' \
+              | grep -o '[0-9]*' | head -4 | tr '\n' ' '
+          )"
+          passed=$((${total:-0} - ${failures:-0} - ${errors:-0} - ${skipped:-0}))
+          {
+            echo "### Test results"
+            echo ""
+            echo "| Run | Passed | Failed | Errors | Skipped |"
+            echo "| --- | --- | --- | --- | --- |"
+            echo "| ${total:-0} | $passed | ${failures:-0} | ${errors:-0} | ${skipped:-0} |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload failure traces, screenshots and videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failure-artifacts
+          path: test-results
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Get Allure history
+        if: always()
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: gh-pages
+
+      - name: Generate Allure report
+        if: always()
+        run: |
+          if [ -d "gh-pages/history" ]; then
+            mkdir -p allure-results/history
+            cp -r gh-pages/history/. allure-results/history/
+          fi
+          npx allure-commandline generate allure-results --clean -o allure-report
+
+      - name: Publish Allure report to GitHub Pages
+        if: always()
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_branch: gh-pages
+          publish_dir: allure-report
+
+      - name: Fail the job if any test failed
+        if: steps.run.outcome == 'failure'
+        run: |
+          echo "::error::Tests failed — see the Playwright report artifact."
+          exit 1

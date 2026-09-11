@@ -1,0 +1,34 @@
+# Node
+node_modules/
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# Allure
+allure-results/
+allure-report/
+
+# Artifacts written by the tests themselves
+downloads/
+templates/
+
+# Environment variables — never commit credentials
+.env
+.env.*
+!.env.template
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
