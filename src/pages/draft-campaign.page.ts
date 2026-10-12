@@ -13,12 +13,6 @@ import { selectDate } from '../utils/datepicker';
  * locators even though Next covers most of the flow.
  */
 export class DraftCampaignPage extends BasePage {
-  /**
-   * Characters the campaign-name field accepts. Enforced by the app's keystroke
-   * handler, not by an HTML maxlength (the input reports maxLength -1).
-   */
-  static readonly NAME_MAX_LENGTH = 30;
-
   private readonly campaignTypeDropdown = this.page.getByRole('button', {
     name: 'Select an option',
   });
@@ -26,14 +20,8 @@ export class DraftCampaignPage extends BasePage {
   private readonly campaignNameInput = this.page.locator(
     "input[placeholder='CampaignName_Month_Year']",
   );
-  private readonly campaignNameError = this.page.getByText(
-    'Please add valid campaign name as per the guidelines.',
-  );
   private readonly startDateInput = this.page.getByPlaceholder('Start date');
   private readonly endDateInput = this.page.getByPlaceholder('End date');
-  private readonly dateToastError = this.page
-    .locator(".digit-toast-error, [class*='toast'][class*='error'], [role='alert']")
-    .first();
 
   private readonly hierarchySearchInput = this.page
     .locator(".select-hierarchy-search-bar input, input[placeholder='Search by hierarchy name']")
@@ -87,17 +75,13 @@ export class DraftCampaignPage extends BasePage {
     await this.nextButton.click();
   }
 
-  /** The dates step's action is the same "Next" control; named for readability. */
-  async clickSubmit(): Promise<void> {
-    await this.clickNext();
-  }
-
   // ==================== CAMPAIGN NAME ====================
 
   /**
    * Fills a unique, valid campaign name.
    *
-   * The name has to stay inside NAME_MAX_LENGTH, and the type prefix plus a
+   * The name has to stay inside the field's 30-character cap (enforced by the
+   * app's keystroke handler, not an HTML maxlength), and the type prefix plus a
    * 9-digit timestamp is what fits: the prefix is truncated to 21 characters so
    * prefix + HHmmssSSS never exceeds the cap. A longer display-name-based prefix
    * silently overflows and the field ends up empty.
@@ -124,33 +108,6 @@ export class DraftCampaignPage extends BasePage {
     await this.campaignNameInput.press('Tab');
   }
 
-  /**
-   * Types a name one keystroke at a time and returns what the field kept.
-   *
-   * Typing is required to observe the cap: the handler truncates keystrokes at
-   * NAME_MAX_LENGTH, but rejects a value that arrives all at once — a fill()
-   * longer than the cap leaves the field EMPTY rather than truncated, and shows
-   * no validation message. Verified on hcm-demo 2026-09-09.
-   */
-  async typeCampaignNameAndGetValue(name: string): Promise<string> {
-    await this.campaignNameInput.waitFor();
-    await this.settle(SETTLE.step);
-    await this.campaignNameInput.click();
-    await this.campaignNameInput.fill('');
-    await this.campaignNameInput.pressSequentially(name);
-    await this.settle(SETTLE.short);
-    return this.campaignNameInput.inputValue();
-  }
-
-  async isCampaignNameErrorVisible(): Promise<boolean> {
-    await this.campaignNameError.waitFor({ timeout: 5_000 });
-    return this.campaignNameError.isVisible();
-  }
-
-  async campaignNameErrorText(): Promise<string> {
-    return (await this.campaignNameError.textContent()) ?? '';
-  }
-
   // ==================== DATES ====================
 
   async fillStartDate(): Promise<void> {
@@ -167,19 +124,6 @@ export class DraftCampaignPage extends BasePage {
   async fillStartAndEndDates(): Promise<void> {
     await this.fillStartDate();
     await this.fillEndDate();
-  }
-
-  async startDateValue(): Promise<string> {
-    return this.startDateInput.inputValue();
-  }
-
-  async endDateValue(): Promise<string> {
-    return this.endDateInput.inputValue();
-  }
-
-  async isDateToastErrorVisible(): Promise<boolean> {
-    await this.dateToastError.waitFor({ timeout: 5_000 });
-    return this.dateToastError.isVisible();
   }
 
   // ==================== BOUNDARY HIERARCHY ====================

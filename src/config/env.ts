@@ -10,9 +10,6 @@ import * as dotenv from 'dotenv';
  */
 dotenv.config({ path: path.resolve(__dirname, '../../.env'), override: true });
 
-/** Environment key used to scope test data — derived from the URL under test. */
-export type EnvName = 'uat' | 'demo' | 'qa';
-
 function read(key: string, fallback?: string): string | undefined {
   const value = process.env[key];
   return value !== undefined && value !== '' ? value : fallback;
@@ -39,17 +36,8 @@ function toNumber(key: string, fallback: number): number {
   return parsed;
 }
 
-function envNameFrom(baseUrl: string): EnvName {
-  if (baseUrl.includes('demo')) return 'demo';
-  if (baseUrl.includes('qa')) return 'qa';
-  return 'uat';
-}
-
-const baseUrl = required('BASE_URL');
-
 export const config = {
-  baseUrl,
-  envName: envNameFrom(baseUrl),
+  baseUrl: required('BASE_URL'),
 
   /**
    * Credentials are only read when a test actually logs in, so `playwright test
@@ -79,7 +67,6 @@ export const config = {
 export function describeRun(): string {
   return [
     `BASE_URL : ${config.baseUrl}`,
-    `ENV      : ${config.envName}`,
     `BROWSER  : ${config.browser}`,
     `HEADLESS : ${config.headless}`,
   ].join('\n');

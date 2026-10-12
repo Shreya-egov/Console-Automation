@@ -18,35 +18,9 @@ export class UploadFilePage extends BasePage {
   private readonly submitButton = this.page.getByRole('button', { name: 'Submit' });
   private readonly cancelIcon = this.page.locator("button[aria-label='Cancel']");
 
-  /**
-   * Submit with nothing uploaded: there is no file row for a result card to sit
-   * under, so this one reports through a toast.
-   */
-  private readonly noFileToast = this.page
-    .locator("[class*='digit-toast'], [role='alert'], .Toastify__toast, .validation-alert-card")
-    .filter({ hasText: 'Please upload a file' });
-
   private readonly validationCard = this.page.locator('.validation-alert-card').first();
   private readonly validationCardMessage = this.validationCard
     .locator('.digit-infobanner-header')
-    .first();
-
-  /**
-   * A rejected upload renders the same card without the success state class, so
-   * failure is detected structurally rather than by message text.
-   */
-  private readonly validationErrorCard = this.page
-    .locator('.validation-alert-card:not(.success)')
-    .first();
-
-  /**
-   * A wrong file *type* is rejected client-side before any server validation and
-   * reports through a toast only — no result card is rendered for it. Verified on
-   * hcm-demo 2026-09-09: div.digit-toast-success.digit-error, "Please upload valid
-   * excel file as per template only."
-   */
-  private readonly fileRejectedToast = this.page
-    .locator("[class*='digit-toast'][class*='digit-error']")
     .first();
 
   constructor(page: Page) {
@@ -66,9 +40,7 @@ export class UploadFilePage extends BasePage {
   async uploadFile(filePath: string): Promise<void> {
     await this.settle(SETTLE.short);
     await this.fileInput.setInputFiles(filePath);
-    // Kept short on purpose: a rejection toast is transient, and a longer sleep
-    // here outlived it. Waiting for validation to finish is the job of
-    // expectUploadSucceeded()/isValidationErrorCardVisible(), not of this method.
+    // Waiting for validation to finish is expectUploadSucceeded()'s job, not this method's.
     await this.settle(SETTLE.short);
   }
 
@@ -129,46 +101,5 @@ export class UploadFilePage extends BasePage {
   /** Message shown on the validation result card. */
   async validationMessage(): Promise<string> {
     return (await this.validationCardMessage.innerText()).trim();
-  }
-
-  async isNoFileToastVisible(): Promise<boolean> {
-    await this.noFileToast.waitFor({ timeout: 15_000 });
-    return this.noFileToast.isVisible();
-  }
-
-  /**
-   * Whether the app rejected the file outright with an error toast.
-   *
-   * This is the wrong-file-type surface: the rejection happens client-side, so no
-   * result card is ever rendered and asserting on the card would simply time out.
-   * Content and structure problems report through the card instead — see
-   * isValidationErrorCardVisible().
-   */
-  async isFileRejectedToastVisible(): Promise<boolean> {
-    await this.fileRejectedToast.waitFor({ timeout: 30_000 });
-    const visible = await this.fileRejectedToast.isVisible();
-    if (visible) {
-      console.log(`[Upload] file rejected: ${(await this.fileRejectedToast.innerText()).trim()}`);
-    }
-    return visible;
-  }
-
-  /**
-   * Whether the validation result card reports a failure.
-   *
-   * A rejected upload reports through the same card as a successful one, below the
-   * uploaded file, distinguished only by the absence of the success state class —
-   * so this must not be asserted via toast text.
-   *
-   * The wait is longer than a toast's would be because a file that is structurally
-   * valid but has bad content is only rejected after the server validates it.
-   */
-  async isValidationErrorCardVisible(timeout = 120_000): Promise<boolean> {
-    await this.validationErrorCard.waitFor({ timeout });
-    const visible = await this.validationErrorCard.isVisible();
-    if (visible) {
-      console.log(`[Upload] validation error card: ${await this.validationMessage()}`);
-    }
-    return visible;
   }
 }

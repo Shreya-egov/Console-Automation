@@ -9,16 +9,13 @@ import { UploadFilePage } from '../pages/upload-file.page';
 import { ChecklistPage } from '../pages/checklist.page';
 
 /**
- * Walks the campaign-creation wizard to a given step.
+ * The campaign-creation wizard, one method per step, from "create from scratch"
+ * through to a created campaign.
  *
  * The console has no deep links into a half-built campaign: a campaign only
  * exists once the draft step has been submitted, and each later step is reachable
- * only from the campaign-details page of that campaign. So a test that exercises,
- * say, the upload step has to drive every step before it — which is what these
- * to* methods do, each building on the one before it.
- *
- * Every method leaves the browser on the step it is named for and returns that
- * step's page object.
+ * only from that campaign's details page. So the steps must run in the order they
+ * are declared here, each starting where the previous one left off.
  */
 export class CampaignFlow {
   readonly landing: CampaignLandingPage;
@@ -43,106 +40,95 @@ export class CampaignFlow {
   }
 
   /** Landing -> "create from scratch" -> the campaign-type step. */
-  async toDraft(): Promise<DraftCampaignPage> {
+  async startFromScratch(): Promise<void> {
     await this.landing.clickCreateCampaign();
     await this.landing.clickScratchCard();
     await this.landing.clickContinue();
-    return this.draft;
-  }
-
-  /** ...through the campaign-type step, onto the name step. */
-  async toCampaignNameStep(): Promise<DraftCampaignPage> {
-    const draft = await this.toDraft();
-    await draft.clickCampaignTypeDropdown();
-    await draft.selectCampaignType();
-    await draft.clickNext();
-    return draft;
-  }
-
-  /** ...through the name step, onto the dates step. */
-  async toCampaignDateStep(): Promise<DraftCampaignPage> {
-    const draft = await this.toCampaignNameStep();
-    await draft.enterUniqueCampaignName();
-    await draft.clickNext();
-    return draft;
   }
 
   /**
-   * ...through the dates step and the hierarchy step, which submits the draft and
-   * lands on the campaign-details page.
+   * Type, name, dates and boundary hierarchy. Submitting the hierarchy creates the
+   * draft and lands on its campaign-details page.
+   *
+   * @returns the generated campaign name.
    */
-  async toBoundaryHierarchy(): Promise<DraftCampaignPage> {
-    const draft = await this.toCampaignDateStep();
-    await draft.fillStartAndEndDates();
-    await draft.clickNext();
-    await draft.searchAndSelectHierarchy();
-    await draft.clickHierarchySubmit();
-    return draft;
+  async createDraft(): Promise<string> {
+    await this.draft.clickCampaignTypeDropdown();
+    await this.draft.selectCampaignType();
+    await this.draft.clickNext();
+
+    const name = await this.draft.enterUniqueCampaignName();
+    await this.draft.clickNext();
+
+    await this.draft.fillStartAndEndDates();
+    await this.draft.clickNext();
+
+    await this.draft.searchAndSelectHierarchy();
+    await this.draft.clickHierarchySubmit();
+    return name;
   }
 
-  /** ...into the boundary-selection step. */
-  async toBoundarySelection(): Promise<BoundarySelectionPage> {
-    await this.toBoundaryHierarchy();
+  /** Boundary selection, back on the campaign-details page. */
+  async selectBoundaries(): Promise<void> {
     await this.boundaries.clickDefineTarget();
-    return this.boundaries;
-  }
-
-  /** ...through boundary selection, back on the campaign-details page. */
-  async toDeliveryRules(): Promise<DeliveryRulesPage> {
-    const boundaries = await this.toBoundarySelection();
-    await boundaries.selectLevels();
-    await boundaries.clickNext();
-    await boundaries.clickSubmit();
-    return this.delivery;
+    await this.boundaries.selectLevels();
+    await this.boundaries.clickNext();
+    await this.boundaries.clickSubmit();
   }
 
   /**
-   * ...into the delivery-conditions screen (attributes, operators, values and
-   * resources).
+   * Delivery rules, back on the campaign-details page.
    *
    * Delivery config opens on a cycles / deliveries / observation-strategy screen.
    * Whether a cycle-date screen follows it depends on the campaign type — as of
    * the 2026-09-09 hcm-demo build BEDNET has none and goes straight to the
    * delivery conditions — so the date step is only taken when it is present.
    */
-  async toDeliveryConditions(): Promise<DeliveryRulesPage> {
-    const delivery = await this.toDeliveryRules();
-    await delivery.clickConfigureDelivery();
-    await delivery.clickNext();
-    await delivery.fillDatesAndNextIfPresent();
-    return delivery;
+  async configureDeliveryRules(): Promise<void> {
+    await this.delivery.clickConfigureDelivery();
+    await this.delivery.clickNext();
+    await this.delivery.fillDatesAndNextIfPresent();
+    // Delivery conditions -> summary -> submit.
+    await this.delivery.clickNext();
+    await this.delivery.clickSubmit();
   }
 
-  /** ...through the conditions and summary screens, back on campaign details. */
-  async toAppConfiguration(): Promise<AppConfigurationPage> {
-    const delivery = await this.toDeliveryConditions();
-    await delivery.clickNext();
-    await delivery.clickSubmit();
-    return this.appConfig;
-  }
-
-  /** ...through every mobile-app module, back on campaign details. */
-  async toUploadFile(): Promise<UploadFilePage> {
-    const appConfig = await this.toAppConfiguration();
-    await appConfig.clickSetUpMobileApp();
-    await appConfig.configureAllModules();
-    await appConfig.clickGoBack();
-    return this.upload;
+  /** Every mobile-app module, leaving the module list on screen. */
+  async configureMobileApp(): Promise<void> {
+    await this.appConfig.clickSetUpMobileApp();
+    await this.appConfig.configureAllModules();
   }
 
   /**
-   * ...through the data upload, onto the checklist step.
+   * Back from the module list, then the data upload, waiting for server-side
+   * validation to pass.
    *
    * The template is generated per campaign, so it is downloaded, filled and
    * uploaded here rather than read from a committed fixture.
+   *
+   * @returns the filled workbook, kept under templates/ for inspection.
    */
-  async toChecklist(): Promise<ChecklistPage> {
-    const upload = await this.toUploadFile();
-    await upload.clickUploadData();
-    await upload.closePopup();
-    await upload.downloadFillAndUploadTemplate();
-    await upload.expectUploadSucceeded();
-    await upload.clickSubmit();
-    return this.checklist;
+  async uploadData(): Promise<string> {
+    await this.appConfig.clickGoBack();
+    await this.upload.clickUploadData();
+    await this.upload.closePopup();
+    const filled = await this.upload.downloadFillAndUploadTemplate();
+    await this.upload.expectUploadSucceeded();
+    await this.upload.clickSubmit();
+    return filled;
+  }
+
+  /** The checklist, back on the campaign summary with "Create Campaign" on offer. */
+  async configureChecklist(): Promise<void> {
+    await this.checklist.clickCreateChecklist();
+    await this.checklist.clickConfigureList();
+    await this.checklist.clickConfigureChecklist();
+    await this.checklist.clickConfirmChecklist();
+    await this.checklist.clickBackToHomepage();
+  }
+
+  /** The final "Create Campaign" action, returning to My Campaigns. */
+  async createCampaign(): Promise<void> {
+    await this.checklist.clickCreateCampaign();
   }
 }

@@ -37,9 +37,6 @@ export class BoundarySelectionPage extends BasePage {
   );
   private readonly nextButton = this.page.getByRole('button', { name: 'Next' });
   private readonly submitButton = this.page.getByRole('button', { name: 'Submit' });
-  private readonly mandatoryFieldsToast = this.page.getByText(
-    'Please fill all the mandatory fields.',
-  );
 
   constructor(page: Page) {
     super(page);
@@ -85,28 +82,6 @@ export class BoundarySelectionPage extends BasePage {
     }
   }
 
-  /**
-   * Picks the LAST option of the second level instead of the first.
-   *
-   * Used by the missing-lowest-level case: a boundary chosen here has no
-   * descendants selected below it, so the deeper levels stay empty and the
-   * mandatory-field validation is what the test then asserts on.
-   */
-  async selectSecondLevelWithoutDescendants(): Promise<void> {
-    const input = this.levelInput(1);
-    await input.waitFor();
-    await this.settle(SETTLE.step);
-    await input.click();
-
-    const last = this.page.locator(`${OPEN_PANEL} ${OPTION_CHECKBOX}`).last();
-    await last.waitFor();
-    await this.settle(SETTLE.short);
-    await last.check();
-
-    await this.heading.click();
-    await this.settle(SETTLE.short);
-  }
-
   async clickNext(): Promise<void> {
     await this.nextButton.waitFor();
     await this.settle(SETTLE.step);
@@ -117,10 +92,5 @@ export class BoundarySelectionPage extends BasePage {
     await this.submitButton.waitFor();
     await this.settle(SETTLE.step);
     await this.submitButton.click();
-  }
-
-  async isMandatoryFieldsToastVisible(): Promise<boolean> {
-    await this.mandatoryFieldsToast.waitFor({ timeout: 15_000 });
-    return this.mandatoryFieldsToast.isVisible();
   }
 }
