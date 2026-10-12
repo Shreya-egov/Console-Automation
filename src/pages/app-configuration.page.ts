@@ -1,6 +1,6 @@
 import type { Locator, Page } from '@playwright/test';
 import { BasePage, SETTLE } from './base.page';
-import { displayName, hasReferralModule, type CampaignType } from '../config/campaign';
+import { hasReferralModule, type CampaignType } from '../config/campaign';
 
 /**
  * "Set up mobile application": a list of module cards, each of which opens its own
@@ -30,16 +30,10 @@ export class AppConfigurationPage extends BasePage {
     )
     .first();
 
-  private readonly deliveryTypeDropdown = this.page.getByRole('button', {
-    name: 'Select an option',
-  });
   private readonly saveConfigurationButton = this.page.getByRole('button', {
     name: 'Save Configuration',
   });
   private readonly goBackButton = this.page.getByRole('button', { name: 'Go Back' });
-  private readonly firstToggleSwitchOn = this.page
-    .getByRole('switch', { name: 'Toggle switch on' })
-    .first();
   private readonly noFlowConfigError = this.page.getByText('No flow configuration found');
 
   constructor(
@@ -71,13 +65,6 @@ export class AppConfigurationPage extends BasePage {
     await this.setUpMobileAppButton.waitFor();
     await this.settle(SETTLE.module);
     await this.setUpMobileAppButton.click();
-  }
-
-  async selectDeliveryType(): Promise<void> {
-    await this.deliveryTypeDropdown.click();
-    await this.page
-      .getByRole('button', { name: displayName(this.campaignType), exact: true })
-      .click();
   }
 
   /**
@@ -198,26 +185,6 @@ export class AppConfigurationPage extends BasePage {
     await this.configureStockReconciliation();
     await this.configureReports();
     await this.configurePermissionHandler();
-  }
-
-  /** Opens the registration module without saving it, for toggle-level cases. */
-  async openRegistrationAndDelivery(): Promise<void> {
-    const card = this.moduleCard(MODULES.registration);
-    await card.waitFor();
-    await this.settle(SETTLE.module);
-    await card.click();
-    await this.settle(SETTLE.module);
-  }
-
-  /**
-   * Turns off whichever field toggle is currently the first one still on.
-   *
-   * "First switch that is on" is re-resolved on every call by design: switching
-   * one off removes it from that set, so repeated calls walk down the list.
-   */
-  async toggleFirstFieldOff(): Promise<void> {
-    await this.firstToggleSwitchOn.click();
-    await this.settle(SETTLE.module);
   }
 
   async isModuleListVisible(): Promise<boolean> {

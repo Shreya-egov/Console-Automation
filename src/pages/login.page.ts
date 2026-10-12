@@ -68,8 +68,4 @@ export class LoginPage extends BasePage {
   async clickLogin(): Promise<void> {
     await this.loginButton.click();
   }
-
-  async isLoginPageDisplayed(): Promise<boolean> {
-    return this.loginButton.isVisible();
-  }
 }

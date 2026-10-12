@@ -5,15 +5,15 @@ the create-campaign wizard, from "create from scratch" through to a created
 campaign.
 
 Ported from the Java/TestNG suite in `Web-Automation`, keeping its locators and
-its hard-won workarounds. The HRMS and PGR-complaint suites were not ported and
-still run from there.
+its hard-won workarounds. Only the campaign creation flow is covered here.
 
 ## Setup
 
 ```bash
+cd console-automation
 npm install
-npm run browsers          # playwright install --with-deps chromium
-cp .env.template .env     # then fill in USERNAME / PASSWORD
+npm run browsers          # installs Chromium and its system deps
+cp .env.template .env     # then edit .env: set USERNAME and PASSWORD (BASE_URL defaults to hcm-demo)
 ```
 
 `.env` is git-ignored. Everything in it can also come from the process
@@ -21,7 +21,7 @@ environment, which is how CI supplies it.
 
 | Variable | Purpose |
 | --- | --- |
-| `BASE_URL` | login page of the environment under test (also selects the test-data block: uat / demo / qa) |
+| `BASE_URL` | login page of the environment under test |
 | `USERNAME`, `PASSWORD` | a user with campaign-manager rights there |
 | `BROWSER` | `chromium` (bundled) or `chrome` (installed channel) |
 | `HEADLESS` | `true` / `false` |
@@ -31,39 +31,57 @@ environment, which is how CI supplies it.
 ## Running
 
 ```bash
-npm test                     # everything, both campaign types
-npm run test:sanity          # happy paths only
-npm run test:negative        # validation cases only
-npm run test:smoke           # the one full flow through to a created campaign
-npm run test:bednet          # one campaign type
-npm run test:headed          # watch it drive
-npm run test:ui              # Playwright UI mode, for debugging a single spec
-npm run report               # open the last HTML report
+# Check it compiles and lists the tests
 npm run typecheck
+npx playwright test --list
+
+# Run the campaign creation flow
+npm test                     # both campaign types
+npm run test:bednet          # BEDNET only
+npm run test:mrdn            # MR-DN only
+npm run test:headed          # watch the browser drive it
+npm run test:ui              # Playwright UI mode, step through for debugging
+
+# One type, headed, one worker
+npx playwright test --project=bednet --headed --workers=1
+
+# Credentials without a .env
+USERNAME=... PASSWORD=... npm run test:bednet
+
+# Results
+npm run report                                           # HTML report
+npx playwright show-trace test-results/<dir>/trace.zip   # trace from a failed run
+npm run allure:generate && npm run allure:open           # needs the allure CLI installed
 ```
 
-Narrow to one case with the usual Playwright flags:
+The downloaded and filled microplan templates are kept in `templates/` for
+inspection. A full run can take up to 30 minutes, mostly the mobile-app setup
+and the upload validation.
 
-```bash
-npx playwright test tests/boundary-selection.spec.ts --project=bednet
-npx playwright test --grep "rejects a workbook"
-```
+### Scope
+
+The suite is one end-to-end test, `tests/create-campaign.spec.ts`: it starts a
+campaign from scratch and drives every wizard step through to a created campaign.
+Each step is a `test.step` with its own check, so a failure is reported against
+the step it happened in.
+
+The per-step negative/validation cases, and the HRMS and PGR-complaint suites,
+are not part of this project. They still run from the Java suite in
+`Web-Automation`.
 
 ### Campaign types are projects, not duplicated tests
 
-The Java suite had a `_BEDNET` and an `_MR_DN` copy of nearly every test. Here
-the type is a project-level option, so each spec is written once and runs under
-both:
+The campaign type is a project-level option, so the flow is written once and runs
+under both:
 
 ```
-[bednet] › draft-campaign.spec.ts › fills the draft form end to end
-[mrdn]   › draft-campaign.spec.ts › fills the draft form end to end
+[bednet] › create-campaign.spec.ts › Campaign creation › creates a campaign from scratch
+[mrdn]   › create-campaign.spec.ts › Campaign creation › creates a campaign from scratch
 ```
 
-Where the types genuinely differ, a test declares it rather than being
-duplicated — `test.skip(!hasCycles(campaignType), ...)` for the cycle-date cases,
-which only a multi-cycle type has. The differences themselves live in one place,
-`src/config/campaign.ts`.
+Where the types genuinely differ (MR-DN has a cycle-date screen and a referral
+module, BEDNET has neither), the page objects check `src/config/campaign.ts`
+rather than the test branching.
 
 ## Layout
 
@@ -71,19 +89,16 @@ which only a multi-cycle type has. The differences themselves live in one place,
 playwright.config.ts     projects, timeouts, reporters
 src/config/env.ts        .env / process env, with required-key validation
 src/config/campaign.ts   campaign types and what differs between them
-src/config/testdata.ts   environment-scoped test data (was testdata.properties)
 src/pages/               one page object per console screen
-src/flows/campaign.flow.ts  walks the wizard to a given step
+src/flows/campaign.flow.ts  the wizard, one method per step
 src/fixtures/test.ts     logged-in `home`, wizard `flow`, `campaignType` option
 src/utils/               date picker, date maths, microplan template filler
-tests/                   one spec per step
-resources/               fixtures for the upload negative cases
+tests/create-campaign.spec.ts  the end-to-end campaign creation test
 ```
 
-`CampaignFlow.to*()` exists because the console has no deep links into a
-half-built campaign: each step is only reachable from the campaign-details page
-of a campaign that the earlier steps created. A test for the upload step
-therefore drives every step before it, which is what `toUploadFile()` does.
+`CampaignFlow`'s steps must run in order: the console has no deep links into a
+half-built campaign, and each step is only reachable from the campaign-details
+page of a campaign that the earlier steps created.
 
 ## Things worth knowing before changing this
 
@@ -95,8 +110,6 @@ therefore drives every step before it, which is what `toUploadFile()` does.
   open dropdown panel and by the option class, because an open dropdown also
   renders a "Select All" row plus two unclassed checkboxes — so
   `getByRole('checkbox').nth(n)` means different things on level 1 and level 2.
-  Delivery-condition values are indexed within `.attribute-container` for the
-  same reason.
 - **The settle delays in `src/pages/base.page.ts`** are not laziness. Playwright
   waits for actionability, but the console re-renders a screen once its data
   arrives and throws away a click that landed just before. The values came from
@@ -106,7 +119,7 @@ therefore drives every step before it, which is what `toUploadFile()` does.
   somewhere else and the failure looks like a missing day cell.
 - **Campaign names must fit 30 characters** and the cap is enforced per
   keystroke: a `fill()` longer than the cap leaves the field *empty*, with no
-  message. `typeCampaignNameAndGetValue()` types for that reason.
+  message. `enterUniqueCampaignName()` keeps the generated name inside it.
 - **The upload template is per-campaign.** It carries the campaign's own
   boundaries and a uuid in a hidden sheet, so the happy path downloads it, fills
   it (`src/utils/microplan-template.ts`) and uploads it back. A committed
@@ -127,23 +140,14 @@ there is no screenshot helper to call. Open a trace with
 
 ## CI
 
-`.github/workflows/run-tests.yml` runs the sanity tag on push to `main` and on a
-weekday schedule, and takes environment / campaign type / tag inputs on manual
+`.github/workflows/run-tests.yml` runs the flow on push to `main` and on a
+weekday schedule, and takes environment and campaign-type inputs on manual
 dispatch. It needs `BASE_URL`, `USERNAME` and `PASSWORD` as environment secrets,
 and optionally `BROWSER`, `HIERARCHY_NAME`, `WORKERS`, `RETRIES` as variables.
 
 ## Status
 
-Typechecks clean, all 76 tests are discovered across the two projects, and the
-template filler is verified against a synthetic workbook (targets, facility
-activation, one distributor plus one warehouse manager per boundary level, hidden
-sheets preserved).
-
-Not yet done: a run against a live environment. That needs credentials, so the
-locators are inherited from the passing Java suite rather than re-proven here —
-expect the first real run to need a pass of locator fixes, especially on the
-checklist screen, whose confirm and back-to-home buttons share one class.
-
-`npm audit` reports two moderate advisories, both the same transitive `uuid`
-buffer-bounds issue inside `exceljs`. It is not on any path this suite uses, and
-the fix is a breaking `exceljs` major.
+Typechecks clean and the one flow test is discovered under both projects. The
+template filler matches `MicroplanTemplateFiller` on the `DEMO` branch of
+`Web-Automation` (targets, facility activation, one distributor plus one
+warehouse manager per boundary level, hidden sheets preserved).

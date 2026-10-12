@@ -23,14 +23,6 @@ on:
           - both
           - bednet
           - mrdn
-      tag:
-        description: 'Tag filter (@sanity, @negative, @smoke; blank = everything)'
-        required: false
-        default: '@sanity'
-      grep:
-        description: 'Extra title filter, e.g. "boundary" (blank = no filter)'
-        required: false
-        default: ''
   repository_dispatch:
     types: [trigger-tests]
 
@@ -59,25 +51,11 @@ jobs:
       - name: Build run arguments
         id: args
         run: |
-          project="${{ github.event.inputs.campaign_type }}"
-          case "$project" in
-            bednet) projects="--project=bednet" ;;
-            mrdn)   projects="--project=mrdn" ;;
-            *)      projects="" ;;                # both, or a non-dispatch trigger
+          case "${{ github.event.inputs.campaign_type }}" in
+            bednet) args="--project=bednet" ;;
+            mrdn)   args="--project=mrdn" ;;
+            *)      args="" ;;                    # both, or a non-dispatch trigger
           esac
-
-          # Tag and title filters are separate --grep values, so they are combined
-          # into one expression that has to match both.
-          tag="${{ github.event.inputs.tag }}"
-          grep_filter="${{ github.event.inputs.grep }}"
-          if [ "${{ github.event_name }}" != "workflow_dispatch" ]; then
-            tag="@sanity"
-            grep_filter=""
-          fi
-
-          args="$projects"
-          [ -n "$tag" ] && args="$args --grep=$tag"
-          [ -n "$grep_filter" ] && args="$args --grep=$grep_filter"
 
           echo "value=$args" >> "$GITHUB_OUTPUT"
           echo "Playwright arguments: $args"

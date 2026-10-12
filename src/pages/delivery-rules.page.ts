@@ -1,4 +1,4 @@
-import type { Locator, Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { BasePage, SETTLE } from './base.page';
 import { hasCycles, type CampaignType } from '../config/campaign';
 import { addDays, addMonths, addWeeks, today } from '../utils/dates';
@@ -21,9 +21,6 @@ export class DeliveryRulesPage extends BasePage {
   private readonly endDateTextbox = this.page.getByRole('textbox', { name: 'End date' });
   private readonly nextButton = this.page.getByRole('button', { name: 'Next' });
   private readonly submitButton = this.page.getByRole('button', { name: 'Submit' });
-  private readonly cycleDateToast = this.page.getByText(
-    'Please fill the cycle dates to move ahead.',
-  );
 
   constructor(
     page: Page,
@@ -104,66 +101,6 @@ export class DeliveryRulesPage extends BasePage {
     await this.fillDates();
     await this.clickNext();
     return true;
-  }
-
-  async isCycleDateToastVisible(): Promise<boolean> {
-    await this.cycleDateToast.waitFor({ timeout: 15_000 });
-    return this.cycleDateToast.isVisible();
-  }
-
-  // ==================== DELIVERY CONDITIONS ====================
-
-  /**
-   * Value input of the Nth delivery condition, 0-based.
-   *
-   * Each condition renders as an .attribute-container holding an attribute
-   * dropdown, an operator dropdown and this value input. Scoping to the container
-   * is what makes the index mean the same thing for every campaign type — a
-   * page-wide getByRole('textbox').nth(n) does not, because the number and order
-   * of conditions differs per type, so index 3 was an attribute dropdown for
-   * BEDNET rather than a value field.
-   */
-  private conditionValue(index: number): Locator {
-    return this.page.locator('.attribute-container .digit-employeeCard-input').nth(index);
-  }
-
-  /**
-   * Types into a delivery condition's value field and returns what the field kept.
-   *
-   * Typing rather than filling is deliberate: the field refuses non-numeric
-   * characters per keystroke (so "abc" is kept as ""), and strips a leading
-   * minus. Verified on hcm-demo 2026-09-09.
-   */
-  async typeConditionValueAndGetValue(index: number, value: string): Promise<string> {
-    const input = this.conditionValue(index);
-    await input.waitFor();
-    await this.settle(SETTLE.short);
-    await input.click();
-    await input.fill('');
-    if (value !== '') {
-      await input.pressSequentially(value);
-    }
-    await this.settle(SETTLE.short);
-    return input.inputValue();
-  }
-
-  /**
-   * Whether the delivery-conditions step is still displayed.
-   *
-   * An unacceptable condition value is refused silently — Next simply does not
-   * advance, with no toast, card or inline message — so "was it rejected?" can
-   * only be answered by whether this step is still on screen. The summary step
-   * that follows renders no condition rows.
-   */
-  async isOnDeliveryConditionsStep(): Promise<boolean> {
-    await this.settle(SETTLE.short);
-    return (await this.page.locator('.attribute-container').count()) > 0;
-  }
-
-  async removeResource(resourceName: string): Promise<void> {
-    const removeButton = this.page.getByRole('button', { name: `Remove ${resourceName}` });
-    await removeButton.waitFor();
-    await removeButton.click();
   }
 
   // ==================== WIZARD CONTROLS ====================
